@@ -143,6 +143,27 @@ function Get-DefaultPersonas {
 
 function Run-Setup {
     Clear-Host
+    Write-Host "┌────────────────────────── Welcome to AI Chat ──────────────────────────┐" -ForegroundColor Cyan
+    Write-Host "│" -ForegroundColor Cyan -NoNewline
+    Write-Host " Coded by GingerDev" -ForegroundColor Green -NoNewline
+    Write-Host " (https://github.com/GingerDev0/)" -ForegroundColor Yellow -NoNewline
+    Write-Host " ".PadRight(28) -NoNewline
+    Write-Host "│" -ForegroundColor Cyan
+    Write-Host "│" -ForegroundColor Cyan -NoNewline
+    Write-Host " Version: $scriptVersion" -ForegroundColor Green -NoNewline
+    Write-Host " ".PadRight(46) -NoNewline
+    Write-Host "│" -ForegroundColor Cyan
+    Write-Host "├─ About ──────────────────────────────────────────────────────────────┤" -ForegroundColor Cyan
+    Write-Host "│ AI Chat is a PowerShell-based interface for interacting with xAI's   │" -ForegroundColor White
+    Write-Host "│ Grok models. Features include:                                       │" -ForegroundColor White
+    Write-Host "│ - Customizable AI personas for tailored conversations                │" -ForegroundColor White
+    Write-Host "│ - Text-to-Speech (TTS) for voice output                             │" -ForegroundColor White
+    Write-Host "│ - Image generation via text prompts                                 │" -ForegroundColor White
+    Write-Host "│ - Auto-updates from GitHub to stay current                          │" -ForegroundColor White
+    Write-Host "└───────────────────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
+    Read-Host "`nPress Enter to start setup..."
+
+    Clear-Host
     Write-Host "=== Initial Setup ===" -ForegroundColor Cyan
     Write-Host "Welcome to the AI Chat setup. Let's configure your settings.`n"
 
