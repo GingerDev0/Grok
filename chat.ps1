@@ -1,3 +1,17 @@
+<# 
+┌────────────────────────── Welcome to AI Chat ──────────────────────────┐
+│ Coded by GingerDev (https://github.com/GingerDev0/)                    │
+│ Version: 1.0.0                                                         │
+├─ About ────────────────────────────────────────────────────────────────┤
+│ AI Chat is a PowerShell-based interface for interacting with xAI's     │
+│ Grok models. Features include:                                         │
+│ - Customizable AI personas for tailored conversations                  │
+│ - Text-to-Speech (TTS) for voice output                                │
+│ - Image generation via text prompts                                    │
+│ - Auto-updates from GitHub to stay current                             │
+└────────────────────────────────────────────────────────────────────────┘
+#>
+
 Clear-Host
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
