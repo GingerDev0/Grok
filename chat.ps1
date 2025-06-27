@@ -1,6 +1,28 @@
 Clear-Host
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+# === Internet Connection Check ===
+function Test-InternetConnection {
+    Write-Host "Checking internet connection..." -ForegroundColor Cyan
+    $testUrl = "https://www.google.com"
+    try {
+        $response = Invoke-WebRequest -Uri $testUrl -Method Head -TimeoutSec 5 -ErrorAction Stop
+        Write-Host "Internet connection verified." -ForegroundColor Green
+        return $true
+    }
+    catch {
+        Write-Host "No internet connection detected. Please check your network and try again." -ForegroundColor Red
+        return $false
+    }
+}
+
+# Check internet connection at startup
+if (-not (Test-InternetConnection)) {
+    Write-Host "Exiting script due to no internet connection." -ForegroundColor Red
+    Read-Host "Press Enter to exit..."
+    exit
+}
+
 # === Script Version ===
 $scriptVersion = "1.0.0"
 
@@ -16,6 +38,27 @@ $personasFile = "personas.json"
 $imageDir = "images"
 if (-not (Test-Path $imageDir)) {
     New-Item -ItemType Directory -Path $imageDir | Out-Null
+}
+
+# === Log Directory ===
+$logDir = "logs"
+if (-not (Test-Path $logDir)) {
+    New-Item -ItemType Directory -Path $logDir | Out-Null
+}
+
+# === Clear Logs Function ===
+function Clear-Logs {
+    try {
+        $logFiles = Get-ChildItem -Path $logDir -Filter "*.txt" -ErrorAction Stop
+        if ($logFiles.Count -gt 0) {
+            Remove-Item -Path $logFiles.FullName -Force -ErrorAction Stop
+            Write-Host "All conversation history logs cleared." -ForegroundColor Green
+        } else {
+            Write-Host "No conversation history logs found to clear." -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "Error clearing logs: $_" -ForegroundColor Red
+    }
 }
 
 function Check-ForUpdate {
@@ -67,6 +110,7 @@ function Update-Script {
         Move-Item -Path $tempScriptPath -Destination $currentScriptPath -Force
         Write-Host "Script updated successfully to commit $commitSha. Please restart the script." -ForegroundColor Green
         Read-Host "Press Enter to exit..."
+        Clear-Logs
         exit
     }
     catch {
@@ -93,6 +137,10 @@ function Get-Config {
             if (-not $config.PSObject.Properties.Name -contains "apiKey") {
                 $config | Add-Member -MemberType NoteProperty -Name apiKey -Value $null
             }
+            # Ensure liveSearchEnabled exists
+            if (-not $config.PSObject.Properties.Name -contains "liveSearchEnabled") {
+                $config | Add-Member -MemberType NoteProperty -Name liveSearchEnabled -Value $true
+            }
             return $config
         }
         catch {
@@ -105,6 +153,7 @@ function Get-Config {
                 commitSha = "initial"
                 username = $null
                 apiKey = $null
+                liveSearchEnabled = $true
             }
         }
     }
@@ -117,6 +166,7 @@ function Get-Config {
             commitSha = "initial"
             username = $null
             apiKey = $null
+            liveSearchEnabled = $true
         }
     }
 }
@@ -130,6 +180,12 @@ function Get-Personas {
     if (Test-Path $personasFile) {
         try {
             $personas = Get-Content $personasFile -Raw | ConvertFrom-Json
+            # Add description field if missing
+            foreach ($persona in $personas) {
+                if (-not $persona.PSObject.Properties.Name -contains "description") {
+                    $persona | Add-Member -MemberType NoteProperty -Name description -Value "No description provided."
+                }
+            }
             return $personas
         }
         catch {
@@ -149,9 +205,58 @@ function Save-Personas {
 
 function Get-DefaultPersonas {
     $config = Get-Config
-    $userName = $config.username ? $config.username : "User"
+    $userName = if ($null -ne $config.username) { $config.username } else { "User" }
     return @(
-        @{ name = "Agent"; prompt = "You are a helpful AI agent. You are called Agent. Your user is called $userName." }
+        @{ 
+            name = "Roxy"; 
+            description = "A chaotic, blunt 21-year-old from London with a penchant for colorful British slang."; 
+            prompt = "You are Roxy, a 21-year-old from London, unhinged and swearing like a sailor on shore leave. You’re chaotic, blunt, and don’t hold back, but you still try to help $userName in your own wild way. Use colorful British slang and keep it raw." 
+        },
+        @{ 
+            name = "Emma"; 
+            description = "A warm and encouraging teacher who explains topics clearly."; 
+            prompt = "You are Emma, a kind and patient teacher. You explain things clearly and respectfully to help $userName understand any topic. Your tone is warm and encouraging." 
+        },
+        @{ 
+            name = "Dr. Patel"; 
+            description = "A knowledgeable doctor providing clear and compassionate medical advice."; 
+            prompt = "You are Dr. Patel, a knowledgeable and compassionate doctor. You provide accurate medical advice and explain health topics in a clear, respectful manner for $userName." 
+        },
+        @{ 
+            name = "Liam"; 
+            description = "A friendly IT specialist offering clear tech solutions."; 
+            prompt = "You are Liam, a friendly and tech-savvy IT specialist. You assist $userName with technical issues and explain solutions in a clear, respectful, and approachable way." 
+        },
+        @{ 
+            name = "Clara"; 
+            description = "A thoughtful counselor providing supportive advice on personal matters."; 
+            prompt = "You are Clara, a thoughtful and empathetic counselor. You listen carefully and offer supportive, respectful advice to $userName on personal or emotional matters." 
+        },
+        @{ 
+            name = "Professor Chen"; 
+            description = "A wise academic offering detailed, well-researched answers."; 
+            prompt = "You are Professor Chen, a wise and respectful academic. You provide detailed, well-researched answers on any subject, helping $userName learn with clarity and patience." 
+        },
+        @{ 
+            name = "Maya"; 
+            description = "A cheerful artist inspiring creative projects with warm guidance."; 
+            prompt = "You are Maya, a cheerful and creative artist. You inspire $userName with imaginative ideas and respectful guidance on creative projects, keeping your tone warm and supportive." 
+        },
+        @{ 
+            name = "Sam"; 
+            description = "A reliable advisor offering practical financial advice."; 
+            prompt = "You are Sam, a reliable and respectful financial advisor. You offer practical, clear, and honest advice to help $userName manage money or plan financially." 
+        },
+        @{ 
+            name = "Aisha"; 
+            description = "A passionate environmentalist providing eco-friendly advice."; 
+            prompt = "You are Aisha, a dedicated and respectful environmentalist. You provide informed, practical advice on sustainability and eco-friendly practices to help $userName make a positive impact." 
+        },
+        @{ 
+            name = "Tom"; 
+            description = "A motivating fitness coach offering tailored exercise advice."; 
+            prompt = "You are Tom, a friendly and respectful fitness coach. You motivate $userName with tailored, encouraging advice on exercise and healthy living." 
+        }
     )
 }
 
@@ -334,7 +439,29 @@ function Show-VoiceMenu {
 
 # === Model Selection ===
 function Get-AvailableModels {
-    return @("grok-3", "grok-3-mini", "grok-3-fast", "grok-3-mini-fast", "grok-2-1212")
+    $config = Get-Config
+    $uri = "https://api.x.ai/v1/models"
+    $apiKey = Decrypt-DPAPI $config.apiKey
+    $headers = @{
+        "Authorization" = "Bearer $apiKey"
+        "Content-Type" = "application/json"
+    }
+    try {
+        $response = Invoke-RestMethod -Uri $uri -Method Get -Headers $headers -TimeoutSec 10
+        Write-Host "Models retrieved successfully:" -ForegroundColor Green
+        # Use $response.data instead of $response.models
+        $models = $response.data | ForEach-Object { $_.id } | Where-Object { $_ -notmatch "image|vision" } # Exclude image and vision models
+        if ($models.Count -eq 0) {
+            Write-Host "No text models returned from API. Using default model list." -ForegroundColor Yellow
+            return @("grok-3", "grok-3-mini", "grok-3-fast", "grok-3-mini-fast", "grok-2-1212")
+        }
+        return $models
+    }
+    catch {
+        Write-Host "Failed to retrieve models: $_" -ForegroundColor Red
+        Write-Host "Using default model list." -ForegroundColor Yellow
+        return @("grok-3", "grok-3-mini", "grok-3-fast", "grok-3-mini-fast", "grok-2-1212")
+    }
 }
 
 function Show-ModelMenu {
@@ -350,7 +477,7 @@ function Show-ModelMenu {
 
     Write-Host "Available text models:"
     for ($i = 0; $i -lt $models.Count; $i++) {
-        Write-Host "$($i + 1). $($models[$i])" -ForegroundColor ($models[$i] -eq $config.currentModel ? 'Green' : 'White')
+        Write-Host "$($i + 1). $($models[$i])" -ForegroundColor $(if ($models[$i] -eq $config.currentModel) { 'Green' } else { 'White' })
     }
     Write-Host "$($models.Count + 1). Back to Main Menu"
     
@@ -470,11 +597,6 @@ function Decrypt-DPAPI {
 
 # === Config & Paths ===
 $apiUrl = "https://api.x.ai/v1/chat/completions"
-$logDir = "logs"
-
-if (-not (Test-Path $logDir)) {
-    New-Item -ItemType Directory -Path $logDir | Out-Null
-}
 
 function Test-ApiKey($key) {
     $config = Get-Config
@@ -504,9 +626,15 @@ function Show-MainMenu {
     Write-Host "┌────────────────────────── AI Chat Interface ──────────────────────────┐" -ForegroundColor Cyan
     Write-Host "│ Welcome, $($config.username ? $config.username : 'User')!" -ForegroundColor White
     Write-Host "├─ Current Settings ────────────────────────────────────────────────────┤" -ForegroundColor Cyan
-    Write-Host "│ Persona: $($config.currentPersona ? $config.currentPersona.name : 'None')" -ForegroundColor Green
+    $personaDisplay = if ($config.currentPersona) { 
+        "$($config.currentPersona.name) ($($config.currentPersona.description))"
+    } else { 
+        "None" 
+    }
+    Write-Host "│ Persona: $personaDisplay" -ForegroundColor Green
     Write-Host "│ Model:   $($config.currentModel)" -ForegroundColor Green
     Write-Host "│ TTS:     $($config.ttsEnabled ? 'Enabled' : 'Disabled') ($($config.currentVoice ? $config.currentVoice : 'Default'))" -ForegroundColor Green
+    Write-Host "│ Live Search: $(if ($config.liveSearchEnabled) { 'Enabled' } else { 'Disabled' })" -ForegroundColor Green
     Write-Host "├─ Menu Options ────────────────────────────────────────────────────────┤" -ForegroundColor Cyan
     
     $menuOptions = @(
@@ -519,9 +647,11 @@ function Show-MainMenu {
         @{ Number = "7"; Category = "Settings"; Name = "Change TTS Voice"; Description = "Select a different TTS voice"; Color = "White" },
         @{ Number = "8"; Category = "Settings"; Name = "Change User Name"; Description = "Update your username"; Color = "White" },
         @{ Number = "9"; Category = "Settings"; Name = "Change API Key"; Description = "Update your API key"; Color = "White" },
-        @{ Number = "10"; Category = "Image"; Name = "Generate Image"; Description = "Create an image from a text description"; Color = "Cyan" }
+        @{ Number = "10"; Category = "Settings"; Name = "Toggle Live Search"; Description = "Enable/disable live search"; Color = "White" },
+        @{ Number = "11"; Category = "Image"; Name = "Generate Image"; Description = "Create an image from a text description"; Color = "Cyan" },
+        @{ Number = "12"; Category = "QUIT"; Name = "QUIT"; Description = "Close the script"; Color = "Red" }
     )
-
+    
     $currentCategory = ""
     foreach ($option in $menuOptions) {
         if ($option.Category -ne $currentCategory) {
@@ -532,7 +662,7 @@ function Show-MainMenu {
     }
     
     Write-Host "└───────────────────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
-    $choice = Read-Host "`nEnter your choice (1-10)"
+    $choice = Read-Host "`nEnter your choice (1-12)"
 
     switch ($choice) {
         "1" {
@@ -552,7 +682,7 @@ function Show-MainMenu {
             $config = Get-Config
             $config.ttsEnabled = -not $config.ttsEnabled
             Save-Config $config
-            Write-Host "TTS is now $($config.ttsEnabled ? 'enabled' : 'disabled')." -ForegroundColor Magenta
+            Write-Host "TTS is now $(if ($config.ttsEnabled) { 'enabled' } else { 'disabled' })." -ForegroundColor Magenta
             Read-Host "Press Enter to return to menu"
             return @{ action = "menu" }
         }
@@ -574,8 +704,7 @@ function Show-MainMenu {
                 $config.username = $newName
                 Save-Config $config
                 Write-Host "User name changed to $newName" -ForegroundColor Green
-            }
-            else {
+            } else {
                 Write-Host "Invalid name, user name not changed." -ForegroundColor Yellow
             }
             Read-Host "Press Enter to return to menu"
@@ -590,15 +719,29 @@ function Show-MainMenu {
                     Save-Config $config
                     Write-Host "API key updated successfully." -ForegroundColor Green
                     break
-                }
-                else {
+                } else {
                     Write-Host "Invalid API key or network error. Please try again." -ForegroundColor Red
                 }
             } until ($false)
             Read-Host "Press Enter to return to menu"
             return @{ action = "menu" }
         }
-        "10" { return @{ action = "generateImage" } }
+        "10" {
+            $config = Get-Config
+            $config.liveSearchEnabled = -not $config.liveSearchEnabled
+            Save-Config $config
+            Write-Host "Live Search is now $(if ($config.liveSearchEnabled) { 'enabled' } else { 'disabled' })." -ForegroundColor Magenta
+            Read-Host "Press Enter to return to menu"
+            return @{ action = "menu" }
+        }
+        "11" { return @{ action = "generateImage" } }
+        "12" {
+            Clear-Host
+            Write-Host "Exiting AI Chat Interface. Goodbye!" -ForegroundColor Red
+            Clear-Logs
+            $speechSynthesizer.Dispose()
+            return @{ action = "exit" }
+        }
         default {
             Write-Host "Invalid choice." -ForegroundColor Red
             Read-Host "Press Enter to continue..."
@@ -610,10 +753,11 @@ function Show-MainMenu {
 function Show-PersonaMenu {
     Clear-Host
     $config = Get-Config
-    Write-Host "Hello, $($config.username ? $config.username : 'User')!`n`n=== AI Chat Persona Menu ====" -ForegroundColor Cyan
+    Write-Host "Hello, $(if ($null -ne $config.username) { $config.username } else { 'User' })!`n`n==== AI Chat Persona Menu ====" -ForegroundColor Cyan
     $personas = Get-Personas
     for ($i = 0; $i -lt $personas.Count; $i++) {
-        Write-Host "$($i + 1). $($personas[$i].name)"
+        Write-Host "$($i + 1). $($personas[$i].name)" -ForegroundColor White
+        Write-Host "   Description: $($personas[$i].description)" -ForegroundColor Gray
     }
     Write-Host "$($personas.Count + 1). Custom Persona"
     Write-Host "$($personas.Count + 2). Back to Main Menu"
@@ -623,16 +767,17 @@ function Show-PersonaMenu {
         return $personas[$choice - 1]
     }
     elseif ($choice -eq ($personas.Count + 1)) {
-        $customPrompt = Read-Host "Enter your custom system prompt"
         $customName = Read-Host "Enter a name for this persona"
-        if (![string]::IsNullOrWhiteSpace($customName) -and ![string]::IsNullOrWhiteSpace($customPrompt)) {
-            $newPersona = @{ name = $customName; prompt = $customPrompt }
+        $customDescription = Read-Host "Enter a description for this persona"
+        $customPrompt = Read-Host "Enter your custom system prompt"
+        if (![string]::IsNullOrWhiteSpace($customName) -and ![string]::IsNullOrWhiteSpace($customDescription) -and ![string]::IsNullOrWhiteSpace($customPrompt)) {
+            $newPersona = @{ name = $customName; description = $customDescription; prompt = $customPrompt }
             $personas = @($personas) + @($newPersona)
             Save-Personas $personas
             return $newPersona
         }
         else {
-            Write-Host "Invalid name or prompt. Persona not created." -ForegroundColor Red
+            Write-Host "Invalid name, description, or prompt. Persona not created." -ForegroundColor Red
             Read-Host "Press Enter to continue..."
             return $null
         }
@@ -659,16 +804,17 @@ function Show-ManagePersonasMenu {
     switch ($choice) {
         "1" {
             $personas = Get-Personas
-            $customPrompt = Read-Host "Enter the system prompt for the new persona"
             $customName = Read-Host "Enter a name for the new persona"
-            if (![string]::IsNullOrWhiteSpace($customName) -and ![string]::IsNullOrWhiteSpace($customPrompt)) {
-                $newPersona = @{ name = $customName; prompt = $customPrompt }
+            $customDescription = Read-Host "Enter a description for the new persona"
+            $customPrompt = Read-Host "Enter the system prompt for the new persona"
+            if (![string]::IsNullOrWhiteSpace($customName) -and ![string]::IsNullOrWhiteSpace($customDescription) -and ![string]::IsNullOrWhiteSpace($customPrompt)) {
+                $newPersona = @{ name = $customName; description = $customDescription; prompt = $customPrompt }
                 $personas = @($personas) + @($newPersona)
                 Save-Personas $personas
                 Write-Host "Persona '$customName' added successfully." -ForegroundColor Green
             }
             else {
-                Write-Host "Invalid name or prompt. Persona not added." -ForegroundColor Red
+                Write-Host "Invalid name, description, or prompt. Persona not added." -ForegroundColor Red
             }
             Read-Host "Press Enter to continue..."
             return
@@ -683,7 +829,8 @@ function Show-ManagePersonasMenu {
             Clear-Host
             Write-Host "=== Remove Persona ===" -ForegroundColor Cyan
             for ($i = 0; $i -lt $personas.Count; $i++) {
-                Write-Host "$($i + 1). $($personas[$i].name)"
+                Write-Host "$($i + 1). $($personas[$i].name)" -ForegroundColor White
+                Write-Host "   Description: $($personas[$i].description)" -ForegroundColor Gray
             }
             Write-Host "$($personas.Count + 1). Cancel"
             $choice = Read-Host "`nChoose a persona to remove (1-$($personas.Count + 1))"
@@ -717,7 +864,8 @@ function Show-ManagePersonasMenu {
             Clear-Host
             Write-Host "=== Modify Persona ===" -ForegroundColor Cyan
             for ($i = 0; $i -lt $personas.Count; $i++) {
-                Write-Host "$($i + 1). $($personas[$i].name)"
+                Write-Host "$($i + 1). $($personas[$i].name)" -ForegroundColor White
+                Write-Host "   Description: $($personas[$i].description)" -ForegroundColor Gray
             }
             Write-Host "$($personas.Count + 1). Cancel"
             $choice = Read-Host "`nChoose a persona to modify (1-$($personas.Count + 1))"
@@ -728,23 +876,28 @@ function Show-ManagePersonasMenu {
                 if ([string]::IsNullOrWhiteSpace($newName)) {
                     $newName = $selectedPersona.name
                 }
+                Write-Host "`nCurrent description: $($selectedPersona.description)"
+                $newDescription = Read-Host "Enter new description (press Enter to keep current)"
+                if ([string]::IsNullOrWhiteSpace($newDescription)) {
+                    $newDescription = $selectedPersona.description
+                }
                 Write-Host "`nCurrent prompt: $($selectedPersona.prompt)"
                 $newPrompt = Read-Host "Enter new prompt (press Enter to keep current)"
                 if ([string]::IsNullOrWhiteSpace($newPrompt)) {
                     $newPrompt = $selectedPersona.prompt
                 }
-                if (![string]::IsNullOrWhiteSpace($newName) -and ![string]::IsNullOrWhiteSpace($newPrompt)) {
-                    $personas[$choice - 1] = @{ name = $newName; prompt = $newPrompt }
+                if (![string]::IsNullOrWhiteSpace($newName) -and ![string]::IsNullOrWhiteSpace($newDescription) -and ![string]::IsNullOrWhiteSpace($newPrompt)) {
+                    $personas[$choice - 1] = @{ name = $newName; description = $newDescription; prompt = $newPrompt }
                     Save-Personas $personas
                     $config = Get-Config
                     if ($config.currentPersona -and $config.currentPersona.name -eq $selectedPersona.name) {
-                        $config.currentPersona = @{ name = $newName; prompt = $newPrompt }
+                        $config.currentPersona = @{ name = $newName; description = $newDescription; prompt = $newPrompt }
                         Save-Config $config
                     }
                     Write-Host "Persona '$newName' modified successfully." -ForegroundColor Green
                 }
                 else {
-                    Write-Host "Invalid name or prompt. Persona not modified." -ForegroundColor Red
+                    Write-Host "Invalid name, description, or prompt. Persona not modified." -ForegroundColor Red
                 }
             }
             elseif ($choice -eq ($personas.Count + 1)) {
@@ -835,7 +988,11 @@ function Start-Chat($persona) {
     while ($true) {
         $userInput = Read-Host ($config.username ? $config.username : "User")
         if ($userInput.ToLower() -eq "exit") {
-            return "exit"
+            Clear-Host
+            Write-Host "Exiting AI Chat Interface. Goodbye!" -ForegroundColor Red
+            Clear-Logs
+            $speechSynthesizer.Dispose()
+            exit
         }
         elseif ($userInput.ToLower() -eq "menu") {
             return
@@ -854,7 +1011,14 @@ function Start-Chat($persona) {
             messages = $messages
             temperature = 0.7
             stream = $false
-        } | ConvertTo-Json -Depth 10
+        }
+        if ($config.liveSearchEnabled) {
+            $body.search_parameters = @{
+                mode = "auto"
+                return_citations = $true
+            }
+        }
+        $body = $body | ConvertTo-Json -Depth 10
         try {
             $response = Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Post -Body $body -TimeoutSec 60
             $aiReply = $response.choices[0].message.content.Trim()
@@ -863,29 +1027,8 @@ function Start-Chat($persona) {
             $logEntryAI = "${personaName}: $aiReply"
             Add-Content -Path $logFile -Value $logEntryUser
             Add-Content -Path $logFile -Value $logEntryAI
-            # Word-wrap output to prevent splitting words
-            $consoleWidth = $Host.UI.RawUI.BufferSize.Width
-            $prefix = "${personaName}: "
-            $prefixLength = $prefix.Length
-            $maxLineLength = $consoleWidth - 2 # Account for padding
-            $words = $aiReply -split ' '
-            $currentLine = $prefix
-            $currentLength = $prefixLength
-            Write-Host "`n" -NoNewline
-            foreach ($word in $words) {
-                $wordLength = $word.Length + 1 # Include space
-                if ($currentLength + $wordLength -gt $maxLineLength) {
-                    Write-Host $currentLine -ForegroundColor Yellow
-                    $currentLine = " " * $prefixLength + $word + " "
-                    $currentLength = $prefixLength + $wordLength
-                } else {
-                    $currentLine += $word + " "
-                    $currentLength += $wordLength
-                }
-            }
-            if ($currentLine.Trim().Length -gt $prefixLength) {
-                Write-Host $currentLine -ForegroundColor Yellow
-            }
+            # Simplified output without word-wrapping
+            Write-Host "`n${personaName}: $aiReply" -ForegroundColor Yellow
             Write-Host "`n" -NoNewline
             Speak-Text -text $aiReply
         }
@@ -903,8 +1046,7 @@ Check-ForUpdate
 $config = Get-Config
 if (-not $config.apiKey -or -not $config.username) {
     $userName = Run-Setup
-}
-else {
+} else {
     $userName = $config.username
 }
 $apiKey = Decrypt-DPAPI $config.apiKey
@@ -912,13 +1054,18 @@ $headers = @{
     "Content-Type"  = "application/json"
     "Authorization" = "Bearer $apiKey"
 }
+
 while ($true) {
     $menuSelection = Show-MainMenu
     switch ($menuSelection.action) {
         "chat" {
             $config = Get-Config
-            $result = Start-Chat -persona $config.currentPersona
-            if ($result -eq "exit") { break }
+            if ($config.currentPersona) {
+                Start-Chat -persona $config.currentPersona
+            } else {
+                Write-Host "No persona selected. Please select a persona first." -ForegroundColor Yellow
+                Read-Host "Press Enter to continue..."
+            }
         }
         "selectPersona" {
             $selectedPersona = Show-PersonaMenu
@@ -926,7 +1073,9 @@ while ($true) {
                 $config = Get-Config
                 $config.currentPersona = $selectedPersona
                 Save-Config $config
+                Write-Host "Persona set to $($selectedPersona.name)." -ForegroundColor Green
             }
+            Read-Host "Press Enter to return to menu"
         }
         "selectModel" {
             $selectedModel = Show-ModelMenu
@@ -941,35 +1090,6 @@ while ($true) {
         "clear" {
             Show-ClearMenu
         }
-        "changeName" {
-            $newName = Read-Host "Enter new user name"
-            if (![string]::IsNullOrWhiteSpace($newName)) {
-                $config = Get-Config
-                $config.username = $newName
-                Save-Config $config
-                Write-Host "User name changed to $newName" -ForegroundColor Green
-            }
-            else {
-                Write-Host "Invalid name, user name not changed." -ForegroundColor Yellow
-            }
-            Read-Host "Press Enter to return to menu"
-        }
-        "changeKey" {
-            do {
-                $newKey = Read-Host "Enter your new API key"
-                if (Test-ApiKey $newKey) {
-                    $config = Get-Config
-                    $config.apiKey = Encrypt-DPAPI $newKey
-                    Save-Config $config
-                    Write-Host "API key updated successfully." -ForegroundColor Green
-                    break
-                }
-                else {
-                    Write-Host "Invalid API key or network error. Please try again." -ForegroundColor Red
-                }
-            } until ($false)
-            Read-Host "Press Enter to return to menu"
-        }
         "managePersonas" {
             Show-ManagePersonasMenu
         }
@@ -978,6 +1098,7 @@ while ($true) {
         }
         "exit" {
             Write-Host "Goodbye!" -ForegroundColor Cyan
+            Clear-Logs
             $speechSynthesizer.Dispose()
             break
         }
@@ -986,6 +1107,7 @@ while ($true) {
         }
         default {
             Write-Host "Unknown action. Returning to menu." -ForegroundColor Yellow
+            Read-Host "Press Enter to continue..."
         }
     }
 }
