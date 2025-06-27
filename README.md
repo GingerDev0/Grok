@@ -99,9 +99,7 @@ For best results, use [PowerShell 7+](https://github.com/PowerShell/PowerShell) 
 This project is **dual-licensed** under the terms of:
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[GNU General Public License v3.0 (GPLv3)](https://www.gnu.org/licenses/gpl-3.0.html)
-
-This project is licensed under the [MIT License](LICENSE).
+[![GPLv3 License](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 
 ---
 
