@@ -1,7 +1,7 @@
 <# 
 ┌────────────────────────── Welcome to AI Chat ──────────────────────────┐
 │ Coded by GingerDev (https://github.com/GingerDev0/)                    │
-│ Version: 1.0.1                                                         │
+│ Version: 1.0.0                                                         │
 ├─ About ────────────────────────────────────────────────────────────────┤
 │ AI Chat is a PowerShell-based interface for interacting with xAI's     │
 │ Grok models. Features include:                                         │
@@ -38,7 +38,35 @@ if (-not (Test-InternetConnection)) {
 }
 
 # === Script Version ===
-$scriptVersion = "1.0.1"
+$scriptVersion = "1.0.0"
+
+# === Function to Validate Downloaded Script ===
+function Test-ScriptValidity {
+    param([string]$filePath)
+    try {
+        # Check if file exists and is not empty
+        if (-not (Test-Path $filePath) -or (Get-Item $filePath).Length -eq 0) {
+            Write-Host "Downloaded script is empty or missing." -ForegroundColor Red
+            return $false
+        }
+        # Basic syntax check using PowerShell's parser
+        $content = Get-Content $filePath -Raw
+        $null = [System.Management.Automation.PSParser]::Tokenize($content, [ref]$null)
+        # Verify version number (optional, assumes version is in the script)
+        if ($content -match '^\$scriptVersion\s*=\s*"([\d\.]+)"') {
+            $newVersion = $Matches[1]
+            if ([version]$newVersion -le [version]$scriptVersion) {
+                Write-Host "New version ($newVersion) is not newer than current version ($scriptVersion)." -ForegroundColor Yellow
+                return $false
+            }
+        }
+        return $true
+    }
+    catch {
+        Write-Host "Downloaded script is invalid: $_" -ForegroundColor Red
+        return $false
+    }
+}
 
 # === TTS Setup ===
 Add-Type -AssemblyName System.Speech
@@ -75,6 +103,7 @@ function Clear-Logs {
     }
 }
 
+# === Modified Check-ForUpdate Function ===
 function Check-ForUpdate {
     $config = Get-Config
     $repoApiUrl = "https://api.github.com/repos/GingerDev0/Grok/commits?path=chat.ps1"
@@ -83,9 +112,12 @@ function Check-ForUpdate {
             "Accept" = "application/vnd.github.v3+json"
             "User-Agent" = "PowerShell-Script-Updater"
         }
-        $commits = Invoke-RestMethod -Uri $repoApiUrl -Headers $headers -Method Get -TimeoutSec 10
+        Write-Host "Checking for updates from GitHub..." -ForegroundColor Cyan
+        $commits = Invoke-RestMethod -Uri $repoApiUrl -Headers $headers -Method Get -TimeoutSec 10 -ErrorAction Stop
         if ($commits -and $commits.Count -gt 0) {
             $latestCommitSha = $commits[0].sha
+            $commitMessage = $commits[0].commit.message
+            Write-Host "Latest commit: $latestCommitSha ($commitMessage)" -ForegroundColor Cyan
             if ($config.commitSha -eq "initial" -or $config.commitSha -ne $latestCommitSha) {
                 Write-Host "A new version of the script is available (Commit: $latestCommitSha)." -ForegroundColor Cyan
                 $choice = Read-Host "Would you like to update? (y/n)"
@@ -97,7 +129,7 @@ function Check-ForUpdate {
                 }
             }
             else {
-                Write-Host "Script is up to date." -ForegroundColor Green
+                Write-Host "Script is up to date (Commit: $latestCommitSha)." -ForegroundColor Green
             }
         }
         else {
@@ -106,32 +138,74 @@ function Check-ForUpdate {
     }
     catch {
         Write-Host "Error checking for updates: $_" -ForegroundColor Red
+        if ($_.Exception.Message -match "rate limit") {
+            Write-Host "GitHub API rate limit exceeded. Please try again later or use an authenticated request." -ForegroundColor Yellow
+        }
     }
 }
 
+# === Improved Update-Script Function ===
 function Update-Script {
     param([string]$commitSha)
     $scriptUrl = "https://raw.githubusercontent.com/GingerDev0/Grok/main/chat.ps1"
-    $tempScriptPath = Join-Path $env:TEMP "chat_temp.ps1"
+    $tempScriptPath = Join-Path $env:TEMP "chat_temp_$(Get-Date -Format 'yyyyMMdd_HHmmss').ps1"
+    $backupPath = Join-Path $env:TEMP "chat_backup_$(Get-Date -Format 'yyyyMMdd_HHmmss').ps1"
+    $currentScriptPath = $PSCommandPath
+
+    Write-Host "Starting script update process..." -ForegroundColor Cyan
     try {
-        Invoke-WebRequest -Uri $scriptUrl -OutFile $tempScriptPath
+        # Create a backup of the current script
+        Write-Host "Creating backup of current script at $backupPath..." -ForegroundColor Cyan
+        Copy-Item -Path $currentScriptPath -Destination $backupPath -Force -ErrorAction Stop
+
+        # Download the new script
+        Write-Host "Downloading new script version from $scriptUrl..." -ForegroundColor Cyan
+        $webClient = New-Object System.Net.WebClient
+        $webClient.Headers.Add("User-Agent", "PowerShell-Script-Updater")
+        $webClient.DownloadFile($scriptUrl, $tempScriptPath)
+        
+        # Validate the downloaded script
+        Write-Host "Validating downloaded script..." -ForegroundColor Cyan
+        if (-not (Test-ScriptValidity -filePath $tempScriptPath)) {
+            throw "Downloaded script failed validation."
+        }
+
         # Update the commit SHA in config.json
+        Write-Host "Updating configuration with new commit SHA: $commitSha..." -ForegroundColor Cyan
         $config = Get-Config
         $config.commitSha = $commitSha
         Save-Config $config
+
         # Replace the current script
-        $currentScriptPath = $PSCommandPath
-        Move-Item -Path $tempScriptPath -Destination $currentScriptPath -Force
-        Write-Host "Script updated successfully to commit $commitSha. Please restart the script." -ForegroundColor Green
+        Write-Host "Replacing current script with new version..." -ForegroundColor Cyan
+        Move-Item -Path $tempScriptPath -Destination $currentScriptPath -Force -ErrorAction Stop
+
+        Write-Host "Script updated successfully to commit $commitSha." -ForegroundColor Green
+        Write-Host "Backup retained at $backupPath." -ForegroundColor Green
+        Write-Host "Please restart the script to apply the update." -ForegroundColor Yellow
         Read-Host "Press Enter to exit..."
         Clear-Logs
         exit
     }
     catch {
         Write-Host "Error updating script: $_" -ForegroundColor Red
-        if (Test-Path $tempScriptPath) {
-            Remove-Item $tempScriptPath -Force
+        # Restore backup if replacement failed
+        if (Test-Path $backupPath -and (Test-Path $currentScriptPath -ErrorAction SilentlyContinue)) {
+            Write-Host "Restoring original script from backup..." -ForegroundColor Yellow
+            try {
+                Move-Item -Path $backupPath -Destination $currentScriptPath -Force -ErrorAction Stop
+                Write-Host "Original script restored successfully." -ForegroundColor Green
+            }
+            catch {
+                Write-Host "Failed to restore backup: $_" -ForegroundColor Red
+            }
         }
+        # Clean up temporary files
+        if (Test-Path $tempScriptPath) {
+            Remove-Item $tempScriptPath -Force -ErrorAction SilentlyContinue
+        }
+        Write-Host "Update failed. The script remains unchanged." -ForegroundColor Red
+        Read-Host "Press Enter to continue..."
     }
 }
 
