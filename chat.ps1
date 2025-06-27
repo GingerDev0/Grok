@@ -2,7 +2,7 @@ Clear-Host
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # === Script Version ===
-$scriptVersion = "1.0.0"
+$scriptVersion = "1.0.1"
 $localCommitSha = "initial" # Placeholder, will be updated after first update
 
 # === TTS Setup ===
