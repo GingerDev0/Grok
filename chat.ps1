@@ -1,7 +1,7 @@
 <# 
 ┌────────────────────────── Welcome to AI Chat ──────────────────────────┐
 │ Coded by GingerDev (https://github.com/GingerDev0/)                    │
-│ Version: 1.0.0                                                         │
+│ Version: 1.0.1                                                         │
 ├─ About ────────────────────────────────────────────────────────────────┤
 │ AI Chat is a PowerShell-based interface for interacting with xAI's     │
 │ Grok models. Features include:                                         │
@@ -38,7 +38,7 @@ if (-not (Test-InternetConnection)) {
 }
 
 # === Script Version ===
-$scriptVersion = "1.0.0"
+$scriptVersion = "1.0.1"
 
 # === TTS Setup ===
 Add-Type -AssemblyName System.Speech
