@@ -1,7 +1,8 @@
 # PowerShell AI Chat Interface
 
 ![PowerShell Version](https://img.shields.io/badge/PowerShell-5.1+-blue.svg)
-![License](https://img.shields.io/badge/License-MIT-green.svg)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A powerful, feature-rich PowerShell script that provides a command-line interface for interacting with the x.ai API (Grok). It includes robust features like persona management, model selection, secure key storage, text-to-speech (TTS), and image generation, all within a user-friendly, interactive menu.
 
@@ -99,4 +100,4 @@ The script will create and manage the following files and directories in its loc
 
 ## License
 
-This project is licensed under the GPL-3.0 license.
+This project is licensed under the GPL-3.0 license & The MIT License.
