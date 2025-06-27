@@ -1,6 +1,10 @@
 Clear-Host
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+# === Script Version ===
+$scriptVersion = "1.0.0"
+$localCommitSha = "initial" # Placeholder, will be updated after first update
+
 # === TTS Setup ===
 Add-Type -AssemblyName System.Speech
 $speechSynthesizer = New-Object System.Speech.Synthesis.SpeechSynthesizer
@@ -13,6 +17,64 @@ $personasFile = "personas.json"
 $imageDir = "images"
 if (-not (Test-Path $imageDir)) {
     New-Item -ItemType Directory -Path $imageDir | Out-Null
+}
+
+function Check-ForUpdate {
+    $repoApiUrl = "https://api.github.com/repos/GingerDev0/Grok/commits?path=chat.ps1"
+    try {
+        $headers = @{
+            "Accept" = "application/vnd.github.v3+json"
+            "User-Agent" = "PowerShell-Script-Updater"
+        }
+        $commits = Invoke-RestMethod -Uri $repoApiUrl -Headers $headers -Method Get -TimeoutSec 10
+        if ($commits -and $commits.Count -gt 0) {
+            $latestCommitSha = $commits[0].sha
+            if ($localCommitSha -eq "initial" -or $localCommitSha -ne $latestCommitSha) {
+                Write-Host "A new version of the script is available (Commit: $latestCommitSha)." -ForegroundColor Cyan
+                $choice = Read-Host "Would you like to update? (y/n)"
+                if ($choice.ToLower() -eq 'y') {
+                    Update-Script -commitSha $latestCommitSha
+                }
+                else {
+                    Write-Host "Update skipped." -ForegroundColor Yellow
+                }
+            }
+            else {
+                Write-Host "Script is up to date." -ForegroundColor Green
+            }
+        }
+        else {
+            Write-Host "No commits found in the repository." -ForegroundColor Yellow
+        }
+    }
+    catch {
+        Write-Host "Error checking for updates: $_" -ForegroundColor Red
+    }
+}
+
+function Update-Script {
+    param([string]$commitSha)
+    $scriptUrl = "https://raw.githubusercontent.com/GingerDev0/Grok/main/chat.ps1"
+    $tempScriptPath = Join-Path $env:TEMP "chat_temp.ps1"
+    try {
+        Invoke-WebRequest -Uri $scriptUrl -OutFile $tempScriptPath
+        # Update the local commit SHA in the script
+        $scriptContent = Get-Content $tempScriptPath -Raw
+        $scriptContent = $scriptContent -replace '\$localCommitSha = "[^"]*"', "\$localCommitSha = `"$commitSha`""
+        Set-Content -Path $tempScriptPath -Value $scriptContent -Encoding UTF8
+        # Replace the current script
+        $currentScriptPath = $PSCommandPath
+        Move-Item -Path $tempScriptPath -Destination $currentScriptPath -Force
+        Write-Host "Script updated successfully to commit $commitSha. Please restart the script." -ForegroundColor Green
+        Read-Host "Press Enter to exit..."
+        exit
+    }
+    catch {
+        Write-Host "Error updating script: $_" -ForegroundColor Red
+        if (Test-Path $tempScriptPath) {
+            Remove-Item $tempScriptPath -Force
+        }
+    }
 }
 
 function Get-Config {
@@ -134,7 +196,7 @@ function Run-Setup {
         currentVoice = $currentVoice
         currentPersona = $selectedPersona
     }
-    Save serais-Config $config
+    Save-Config $config
     Write-Host "`nSetup complete! Configuration saved." -ForegroundColor Green
     Read-Host "Press Enter to continue..."
     return $userName
@@ -758,6 +820,9 @@ function Start-Chat($persona) {
 }
 
 # === Main script ===
+Write-Host "Checking for updates..." -ForegroundColor Cyan
+Check-ForUpdate
+
 $apiKeyInput = Get-ApiKey
 $headers = @{
     "Content-Type"  = "application/json"
