@@ -2,8 +2,7 @@ Clear-Host
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # === Script Version ===
-$scriptVersion = "1.0.1"
-$localCommitSha = "initial" # Placeholder, will be updated after first update
+$scriptVersion = "1.0.0"
 
 # === TTS Setup ===
 Add-Type -AssemblyName System.Speech
@@ -20,6 +19,7 @@ if (-not (Test-Path $imageDir)) {
 }
 
 function Check-ForUpdate {
+    $config = Get-Config
     $repoApiUrl = "https://api.github.com/repos/GingerDev0/Grok/commits?path=chat.ps1"
     try {
         $headers = @{
@@ -29,7 +29,7 @@ function Check-ForUpdate {
         $commits = Invoke-RestMethod -Uri $repoApiUrl -Headers $headers -Method Get -TimeoutSec 10
         if ($commits -and $commits.Count -gt 0) {
             $latestCommitSha = $commits[0].sha
-            if ($localCommitSha -eq "initial" -or $localCommitSha -ne $latestCommitSha) {
+            if ($config.commitSha -eq "initial" -or $config.commitSha -ne $latestCommitSha) {
                 Write-Host "A new version of the script is available (Commit: $latestCommitSha)." -ForegroundColor Cyan
                 $choice = Read-Host "Would you like to update? (y/n)"
                 if ($choice.ToLower() -eq 'y') {
@@ -58,10 +58,10 @@ function Update-Script {
     $tempScriptPath = Join-Path $env:TEMP "chat_temp.ps1"
     try {
         Invoke-WebRequest -Uri $scriptUrl -OutFile $tempScriptPath
-        # Update the local commit SHA in the script
-        $scriptContent = Get-Content $tempScriptPath -Raw
-        $scriptContent = $scriptContent -replace '\$localCommitSha = "[^"]*"', "\$localCommitSha = `"$commitSha`""
-        Set-Content -Path $tempScriptPath -Value $scriptContent -Encoding UTF8
+        # Update the commit SHA in config.json
+        $config = Get-Config
+        $config.commitSha = $commitSha
+        Save-Config $config
         # Replace the current script
         $currentScriptPath = $PSCommandPath
         Move-Item -Path $tempScriptPath -Destination $currentScriptPath -Force
@@ -81,6 +81,10 @@ function Get-Config {
     if (Test-Path $configFile) {
         try {
             $config = Get-Content $configFile -Raw | ConvertFrom-Json
+            # Ensure commitSha exists
+            if (-not $config.PSObject.Properties.Name -contains "commitSha") {
+                $config | Add-Member -MemberType NoteProperty -Name commitSha -Value "initial"
+            }
             return $config
         }
         catch {
@@ -90,6 +94,7 @@ function Get-Config {
                 ttsEnabled = $false
                 currentVoice = $null
                 currentPersona = $null
+                commitSha = "initial"
             }
         }
     }
@@ -99,6 +104,7 @@ function Get-Config {
             ttsEnabled = $false
             currentVoice = $null
             currentPersona = $null
+            commitSha = "initial"
         }
     }
 }
@@ -195,6 +201,7 @@ function Run-Setup {
         ttsEnabled = $ttsEnabled
         currentVoice = $currentVoice
         currentPersona = $selectedPersona
+        commitSha = "initial"
     }
     Save-Config $config
     Write-Host "`nSetup complete! Configuration saved." -ForegroundColor Green
