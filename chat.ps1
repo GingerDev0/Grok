@@ -551,13 +551,15 @@ function Generate-Image {
 }
 
 function Show-ImageGenerationMenu {
-    Clear-Host
-    Write-Host "=== Image Generation ===" -ForegroundColor Cyan
     while ($true) {
-        Write-Host "Enter a description for the image you want to generate."
+        Clear-Host
+        Write-Host "=== Image Generation ===" -ForegroundColor Cyan
+        Write-Host "`nEnter a description for the image you want to generate."
         Write-Host "Type 'cancel' to return to the main menu.`n"
         $prompt = Read-Host "Image description"
+        
         if ($prompt.ToLower() -eq "cancel") {
+            Write-Host "Returning to main menu..." -ForegroundColor Yellow
             return
         }
         elseif ([string]::IsNullOrWhiteSpace($prompt)) {
@@ -565,36 +567,50 @@ function Show-ImageGenerationMenu {
             Read-Host "Press Enter to try again..."
             continue
         }
-        $imagePath = Generate-Image -prompt $prompt
+
+        $imagePath = Generate-Image -Prompt $prompt
         if ($imagePath) {
             while ($true) {
                 Clear-Host
                 Write-Host "=== Image Generation Options ===" -ForegroundColor Cyan
                 Write-Host "Image saved at: $imagePath" -ForegroundColor Green
                 Write-Host "`n1. View Image"
-                Write-Host "2. Generate New Image"
+                Write-Host "2. Generate Another Image"
                 Write-Host "3. Return to Main Menu"
                 $choice = Read-Host "`nChoose an option (1-3)"
+                
                 switch ($choice) {
                     "1" {
                         try {
-                            Start-Process $imagePath
+                            Write-Host "Opening image..." -ForegroundColor Yellow
+                            Start-Process -FilePath $imagePath
                         }
                         catch {
                             Write-Host "Error opening image: $_" -ForegroundColor Red
                         }
                         Read-Host "Press Enter to continue..."
                     }
-                    "2" { break }
-                    "3" { return }
+                    "2" {
+                        Write-Host "Generating another image..." -ForegroundColor Yellow
+                        break  # Exit inner loop to restart image generation
+                    }
+                    "3" {
+                        Write-Host "Returning to main menu..." -ForegroundColor Yellow
+                        return
+                    }
                     default {
-                        Write-Host "Invalid choice." -ForegroundColor Red
+                        Write-Host "Invalid choice. Please select 1, 2, or 3." -ForegroundColor Red
                         Read-Host "Press Enter to try again..."
                     }
                 }
+                if ($choice -eq "2") {
+                    break  # Ensure we exit the inner loop completely
+                }
             }
+            continue  # Restart outer loop for new image generation
         }
         else {
+            Write-Host "Image generation failed." -ForegroundColor Red
             Read-Host "Press Enter to try again..."
         }
     }
