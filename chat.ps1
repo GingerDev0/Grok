@@ -85,6 +85,14 @@ function Get-Config {
             if (-not $config.PSObject.Properties.Name -contains "commitSha") {
                 $config | Add-Member -MemberType NoteProperty -Name commitSha -Value "initial"
             }
+            # Ensure username exists
+            if (-not $config.PSObject.Properties.Name -contains "username") {
+                $config | Add-Member -MemberType NoteProperty -Name username -Value $null
+            }
+            # Ensure apiKey exists
+            if (-not $config.PSObject.Properties.Name -contains "apiKey") {
+                $config | Add-Member -MemberType NoteProperty -Name apiKey -Value $null
+            }
             return $config
         }
         catch {
@@ -95,6 +103,8 @@ function Get-Config {
                 currentVoice = $null
                 currentPersona = $null
                 commitSha = "initial"
+                username = $null
+                apiKey = $null
             }
         }
     }
@@ -105,6 +115,8 @@ function Get-Config {
             currentVoice = $null
             currentPersona = $null
             commitSha = "initial"
+            username = $null
+            apiKey = $null
         }
     }
 }
@@ -136,6 +148,8 @@ function Save-Personas {
 }
 
 function Get-DefaultPersonas {
+    $config = Get-Config
+    $userName = $config.username ? $config.username : "User"
     return @(
         @{ name = "Agent"; prompt = "You are a helpful AI agent. You are called Agent. Your user is called $userName." }
     )
@@ -167,13 +181,48 @@ function Run-Setup {
     Write-Host "=== Initial Setup ===" -ForegroundColor Cyan
     Write-Host "Welcome to the AI Chat setup. Let's configure your settings.`n"
 
-    # Configure Username
-    $userName = Read-Host "Please enter your name"
-    if ([string]::IsNullOrWhiteSpace($userName)) {
-        $userName = "User"
-        Write-Host "No name provided. Using default name 'User'." -ForegroundColor Yellow
+    # Migrate existing username.dat and apikey.dat if they exist
+    $config = Get-Config
+    if (-not $config.username -and (Test-Path "username.dat")) {
+        $config.username = Get-Content -Path "username.dat" -Raw
     }
-    Set-Content -Path $userFile -Value $userName -Encoding UTF8 -NoNewline
+    if (-not $config.apiKey -and (Test-Path "apikey.dat")) {
+        try {
+            $encKeyStr = Get-Content -Path "apikey.dat" -Raw
+            $config.apiKey = $encKeyStr
+        }
+        catch {
+            Write-Host "Failed to migrate API key from apikey.dat." -ForegroundColor Yellow
+        }
+    }
+
+    # Configure Username
+    if (-not $config.username) {
+        $userName = Read-Host "Please enter your name"
+        if ([string]::IsNullOrWhiteSpace($userName)) {
+            $userName = "User"
+            Write-Host "No name provided. Using default name 'User'." -ForegroundColor Yellow
+        }
+        $config.username = $userName
+    }
+    else {
+        $userName = $config.username
+    }
+
+    # Configure API Key
+    if (-not $config.apiKey) {
+        do {
+            $key = Read-Host "Enter your API key"
+            if (Test-ApiKey $key) {
+                Write-Host "API key accepted." -ForegroundColor Green
+                $config.apiKey = Encrypt-DPAPI $key
+                break
+            }
+            else {
+                Write-Host "Invalid API key or network error. Please try again." -ForegroundColor Red
+            }
+        } until ($false)
+    }
 
     # Initialize Personas
     if (-not (Test-Path $personasFile)) {
@@ -217,15 +266,22 @@ function Run-Setup {
         }
     }
 
-    $config = @{
-        currentModel = $selectedModel
-        ttsEnabled = $ttsEnabled
-        currentVoice = $currentVoice
-        currentPersona = $selectedPersona
-        commitSha = "initial"
+    $config.currentModel = $selectedModel
+    $config.ttsEnabled = $ttsEnabled
+    $config.currentVoice = $currentVoice
+    $config.currentPersona = $selectedPersona
+    if (-not $config.PSObject.Properties.Name -contains "commitSha") {
+        $config.commitSha = "initial"
     }
     Save-Config $config
     Write-Host "`nSetup complete! Configuration saved." -ForegroundColor Green
+    # Clean up old files if they exist
+    if (Test-Path "username.dat") {
+        Remove-Item "username.dat" -Force
+    }
+    if (Test-Path "apikey.dat") {
+        Remove-Item "apikey.dat" -Force
+    }
     Read-Host "Press Enter to continue..."
     return $userName
 }
@@ -316,6 +372,12 @@ function Show-ModelMenu {
 function Generate-Image {
     param($prompt)
     $imageApiUrl = "https://api.x.ai/v1/images/generations"
+    $config = Get-Config
+    $apiKey = Decrypt-DPAPI $config.apiKey
+    $headers = @{
+        "Content-Type"  = "application/json"
+        "Authorization" = "Bearer $apiKey"
+    }
     $body = @{
         model = "grok-2-image"
         prompt = $prompt
@@ -407,8 +469,6 @@ function Decrypt-DPAPI {
 }
 
 # === Config & Paths ===
-$apiFile = "apikey.dat"
-$userFile = "username.dat"
 $apiUrl = "https://api.x.ai/v1/chat/completions"
 $logDir = "logs"
 
@@ -438,57 +498,11 @@ function Test-ApiKey($key) {
     }
 }
 
-function Get-ApiKey {
-    if (-not (Test-Path $apiFile)) {
-        do {
-            $key = Read-Host "Enter your API key"
-            if (Test-ApiKey $key) {
-                Write-Host "API key accepted." -ForegroundColor Green
-                $encKeyStr = Encrypt-DPAPI $key
-                Set-Content -Path $apiFile -Value $encKeyStr -Encoding ASCII -NoNewline
-                return $key
-            }
-            else {
-                Write-Host "Invalid API key or network error. Please try again." -ForegroundColor Red
-            }
-        } until ($false)
-    }
-    else {
-        try {
-            $encKeyStr = Get-Content -Path $apiFile -Raw
-            return Decrypt-DPAPI $encKeyStr
-        }
-        catch {
-            Write-Host "Failed to decrypt API key file, please enter your API key again." -ForegroundColor Yellow
-            Remove-Item $apiFile -Force
-            return Get-ApiKey
-        }
-    }
-}
-
-function Get-UserName {
-    if (-not (Test-Path $userFile)) {
-        return $null
-    }
-    else {
-        return Get-Content -Path $userFile -Raw
-    }
-}
-
-function Save-UserName($name) {
-    Set-Content -Path $userFile -Value $name -Encoding UTF8 -NoNewline
-}
-
-function Save-ApiKey($key) {
-    $encKeyStr = Encrypt-DPAPI $key
-    Set-Content -Path $apiFile -Value $encKeyStr -Encoding ASCII -NoNewline
-}
-
 function Show-MainMenu {
     Clear-Host
     $config = Get-Config
     Write-Host "┌────────────────────────── AI Chat Interface ──────────────────────────┐" -ForegroundColor Cyan
-    Write-Host "│ Welcome, $userName!" -ForegroundColor White
+    Write-Host "│ Welcome, $($config.username ? $config.username : 'User')!" -ForegroundColor White
     Write-Host "├─ Current Settings ────────────────────────────────────────────────────┤" -ForegroundColor Cyan
     Write-Host "│ Persona: $($config.currentPersona ? $config.currentPersona.name : 'None')" -ForegroundColor Green
     Write-Host "│ Model:   $($config.currentModel)" -ForegroundColor Green
@@ -553,8 +567,37 @@ function Show-MainMenu {
             Read-Host "Press Enter to return to menu"
             return @{ action = "menu" }
         }
-        "8" { return @{ action = "changeName" } }
-        "9" { return @{ action = "changeKey" } }
+        "8" {
+            $newName = Read-Host "Enter new user name"
+            if (![string]::IsNullOrWhiteSpace($newName)) {
+                $config = Get-Config
+                $config.username = $newName
+                Save-Config $config
+                Write-Host "User name changed to $newName" -ForegroundColor Green
+            }
+            else {
+                Write-Host "Invalid name, user name not changed." -ForegroundColor Yellow
+            }
+            Read-Host "Press Enter to return to menu"
+            return @{ action = "menu" }
+        }
+        "9" {
+            do {
+                $newKey = Read-Host "Enter your new API key"
+                if (Test-ApiKey $newKey) {
+                    $config = Get-Config
+                    $config.apiKey = Encrypt-DPAPI $newKey
+                    Save-Config $config
+                    Write-Host "API key updated successfully." -ForegroundColor Green
+                    break
+                }
+                else {
+                    Write-Host "Invalid API key or network error. Please try again." -ForegroundColor Red
+                }
+            } until ($false)
+            Read-Host "Press Enter to return to menu"
+            return @{ action = "menu" }
+        }
         "10" { return @{ action = "generateImage" } }
         default {
             Write-Host "Invalid choice." -ForegroundColor Red
@@ -566,7 +609,8 @@ function Show-MainMenu {
 
 function Show-PersonaMenu {
     Clear-Host
-    Write-Host "Hello, $userName!`n`n=== AI Chat Persona Menu ====" -ForegroundColor Cyan
+    $config = Get-Config
+    Write-Host "Hello, $($config.username ? $config.username : 'User')!`n`n=== AI Chat Persona Menu ====" -ForegroundColor Cyan
     $personas = Get-Personas
     for ($i = 0; $i -lt $personas.Count; $i++) {
         Write-Host "$($i + 1). $($personas[$i].name)"
@@ -789,7 +833,7 @@ function Start-Chat($persona) {
     Write-Host "`n[Chat started with persona: $personaName, model: $($config.currentModel)]" -ForegroundColor Green
     Write-Host "Type 'exit' to end the script, or 'menu' to return to the main menu.`n" -ForegroundColor DarkGray
     while ($true) {
-        $userInput = Read-Host "$userName"
+        $userInput = Read-Host ($config.username ? $config.username : "User")
         if ($userInput.ToLower() -eq "exit") {
             return "exit"
         }
@@ -800,6 +844,11 @@ function Start-Chat($persona) {
             continue
         }
         $messages += @{ role = "user"; content = $userInput }
+        $apiKey = Decrypt-DPAPI $config.apiKey
+        $headers = @{
+            "Content-Type"  = "application/json"
+            "Authorization" = "Bearer $apiKey"
+        }
         $body = @{
             model = $config.currentModel
             messages = $messages
@@ -851,14 +900,17 @@ function Start-Chat($persona) {
 Write-Host "Checking for updates..." -ForegroundColor Cyan
 Check-ForUpdate
 
-$apiKeyInput = Get-ApiKey
+$config = Get-Config
+if (-not $config.apiKey -or -not $config.username) {
+    $userName = Run-Setup
+}
+else {
+    $userName = $config.username
+}
+$apiKey = Decrypt-DPAPI $config.apiKey
 $headers = @{
     "Content-Type"  = "application/json"
-    "Authorization" = "Bearer $apiKeyInput"
-}
-$userName = Get-UserName
-if (-not $userName -or -not (Test-Path $configFile)) {
-    $userName = Run-Setup
+    "Authorization" = "Bearer $apiKey"
 }
 while ($true) {
     $menuSelection = Show-MainMenu
@@ -892,9 +944,10 @@ while ($true) {
         "changeName" {
             $newName = Read-Host "Enter new user name"
             if (![string]::IsNullOrWhiteSpace($newName)) {
-                Save-UserName $newName
-                $userName = $newName
-                Write-Host "User name changed to $userName" -ForegroundColor Green
+                $config = Get-Config
+                $config.username = $newName
+                Save-Config $config
+                Write-Host "User name changed to $newName" -ForegroundColor Green
             }
             else {
                 Write-Host "Invalid name, user name not changed." -ForegroundColor Yellow
@@ -905,9 +958,9 @@ while ($true) {
             do {
                 $newKey = Read-Host "Enter your new API key"
                 if (Test-ApiKey $newKey) {
-                    Save-ApiKey $newKey
-                    $apiKeyInput = $newKey
-                    $headers["Authorization"] = "Bearer $apiKeyInput"
+                    $config = Get-Config
+                    $config.apiKey = Encrypt-DPAPI $newKey
+                    Save-Config $config
                     Write-Host "API key updated successfully." -ForegroundColor Green
                     break
                 }
